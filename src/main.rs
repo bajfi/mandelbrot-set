@@ -9,8 +9,8 @@ fn main() {
     let cli = cli::Cli::parse();
 
     // Create the output directory if it doesn't exist
-    if !cli.result_folder.exists() {
-        std::fs::create_dir_all(&cli.result_folder).expect("Error creating output directory");
+    if !cli.output_folder.exists() {
+        std::fs::create_dir_all(&cli.output_folder).expect("Error creating output directory");
     }
 
     // Determine where to store frames
@@ -22,7 +22,7 @@ fn main() {
         dir.path().to_path_buf()
     } else {
         // Use the frames directory in the result folder
-        let dir = cli.result_folder.join("frames");
+        let dir = cli.output_folder.join("frames");
         if !dir.exists() {
             std::fs::create_dir_all(&dir).expect("Error creating frames directory");
         }
@@ -35,9 +35,12 @@ fn main() {
     let mut lower_right =
         utils::parse_complex(&cli.lower_right).expect("Error parsing lower right corner point");
     let scale_factor = cli.scale_factor;
+    let power = cli.power;
+    let escape_radius = cli.escape_radius;
     let scale_pointer = utils::parse_complex(&cli.pointer).expect("Error parsing scale pointer");
     let n_frames = cli.n_frames;
 
+    // The size of the pixel buffer is width * height
     let mut pixels = vec![0; bounds.0 * bounds.1];
 
     // Collect frame paths for later GIF creation
@@ -71,7 +74,14 @@ fn main() {
                     );
 
                     spawner.spawn(move |_| {
-                        utils::render(band, band_bounds, band_upper_left, band_lower_right);
+                        utils::render(
+                            band,
+                            band_bounds,
+                            band_upper_left,
+                            band_lower_right,
+                            power,
+                            escape_radius,
+                        );
                     });
                 }
             })
@@ -101,7 +111,7 @@ fn main() {
 
     // After generating all frames, create a GIF animation
     println!("Creating GIF from {} frames...", frame_paths.len());
-    let gif_path = format!("{}/mandelbrot_zoom.gif", cli.result_folder.display());
+    let gif_path = format!("{}/mandelbrot_zoom.gif", cli.output_folder.display());
 
     // Add progress bar for GIF creation
     let gif_progress = ProgressBar::new_spinner();

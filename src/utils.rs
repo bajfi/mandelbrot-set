@@ -1,27 +1,8 @@
 pub mod preserve;
 pub mod transform;
 use num::Complex;
-
-/// Try to determine if `c` is in the Mandelbrot set, using at most `limit`
-/// iterations to decide.
-///
-/// If `c` is not a member, return `Some(i)`, where `i` is the number of
-/// iterations it took for `c` to leave the circle of radius 2 centered on the
-/// origin. If `c` seems to be a member (more precisely, if we reached the
-/// iteration limit without being able to prove that `c` is not a member),
-/// return `None`.
-pub fn escape_time(c: Complex<f64>, limit: usize) -> Option<usize> {
-    let mut z = Complex { re: 0.0, im: 0.0 };
-    for i in 0..limit {
-        if z.norm_sqr() > 4.0 {
-            return Some(i);
-        }
-        z = z * z + c;
-    }
-    None
-}
-
 use std::str::FromStr;
+
 /// Parse the string `s` as a coordinate pair, like `"400x600"` or `"1.0,0.5"`.
 ///
 /// Specifically, `s` should have the form <left><sep><right>, where <sep> is
@@ -63,6 +44,27 @@ fn test_parse_complex() {
     assert_eq!(parse_complex("0.5,1.5x"), None);
 }
 
+/// Try to determine if `c` is in the Mandelbrot set, using at most `limit`
+/// iterations to decide.
+///
+/// If `c` is not a member, return `Some(i)`, where `i` is the number of
+/// iterations it took for `c` to leave the circle of radius 2 centered on the
+/// origin. If `c` seems to be a member (more precisely, if we reached the
+/// iteration limit without being able to prove that `c` is not a member),
+/// return `None`.
+pub fn escape_time(c: Complex<f64>, limit: usize, power: i32, escape_radius: f64) -> Option<usize> {
+    assert!(limit > 0);
+    assert!(escape_radius > 0.0);
+    let mut z = Complex { re: 0.0, im: 0.0 };
+    for i in 0..limit {
+        if z.norm_sqr() > escape_radius.powi(2) {
+            return Some(i);
+        }
+        z = z.powi(power) + c;
+    }
+    None
+}
+
 /// Render a rectangle of the Mandelbrot set into a buffer of pixels.
 ///
 /// The `bounds` argument gives the width and height of the buffer `pixels`,
@@ -74,16 +76,19 @@ pub fn render(
     bounds: (usize, usize),
     upper_left: Complex<f64>,
     lower_right: Complex<f64>,
+    power: i32,
+    escape_radius: f64,
 ) {
     assert!(pixels.len() == bounds.0 * bounds.1);
 
     for row in 0..bounds.1 {
         for column in 0..bounds.0 {
             let point = transform::pixel_to_point(bounds, (column, row), upper_left, lower_right);
-            pixels[row * bounds.0 + column] = match escape_time(point, 255) {
-                None => 0,
-                Some(count) => 255 - count as u8,
-            };
+            pixels[row * bounds.0 + column] =
+                match escape_time(point, u8::MAX as usize, power, escape_radius) {
+                    None => 0,
+                    Some(count) => u8::MAX - count as u8,
+                };
         }
     }
 }

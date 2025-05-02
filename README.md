@@ -47,16 +47,19 @@ USAGE:
     mandelbrot [OPTIONS]
 
 OPTIONS:
-    -r, --result-folder <FOLDER>     Directory where output images and gif will be saved [default: results]
-    -p, --pixels <WIDTHxHEIGHT>      Image dimensions [default: 1024x1024]
+    -o, --output-folder <FOLDER>     Directory where output images and gif will be saved [default: results]
     -u, --upper-left <REAL,IMAG>     Upper left corner coordinates [default: -1.0,-1.0]
     -l, --lower-right <REAL,IMAG>    Lower right corner coordinates [default: 1.0,1.0]
     -s, --scale-factor <FACTOR>      Scaling factor for each frame (e.g., 0.9 for zoom in) [default: 0.9]
     -n, --n-frames <COUNT>           Number of frames to generate [default: 10]
     -d, --delay <DELAY>              Delay between frames in hundredths of a second [default: 20]
-    -t, --threads <COUNT>            Number of threads to use for rendering [default: 8]
     -h, --help                       Print help information
     -V, --version                    Print version information
+    --threads <COUNT>            Number of threads to use for rendering [default: 8]
+    --pixels <WIDTHxHEIGHT>      Image dimensions [default: 1024x1024]
+    --power <POWER>                  Power for the Mandelbrot set calculation [default: 2]
+    --escape-radius <RADIUS>         Escape radius for the Mandelbrot set calculation [default: 2.0]
+    --no-frames                      Disable frame generation (only generate the final GIF)
 ```
 
 ### Examples
@@ -64,7 +67,7 @@ OPTIONS:
 Generate a 50-frame zooming animation at 800x600 resolution:
 
 ```bash
-./target/release/mandelbrot --pixels 800x600 --n-frames 50
+./target/release/mandelbrot --pixels 800x600 --n-frames 50 --no-frames
 ```
 
 Zoom into a specific interesting region:

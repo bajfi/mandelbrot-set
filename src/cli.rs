@@ -11,7 +11,7 @@ use std::path::PathBuf;
 pub struct Cli {
     /// Directory where output images and gif will be saved
     #[arg(short, long, default_value = "results")]
-    pub result_folder: PathBuf,
+    pub output_folder: PathBuf,
 
     /// Image dimensions in format WIDTHxHEIGHT (e.g., 1000x750)
     #[arg(long, default_value = "1024x1024")]
@@ -28,6 +28,14 @@ pub struct Cli {
     /// Scaling factor for each frame (e.g., 0.9 for zoom in)
     #[arg(short, long, default_value_t = 0.95)]
     pub scale_factor: f64,
+
+    /// Power of the Mandelbrot set (e.g., 2 for standard Mandelbrot)
+    #[arg(long, default_value_t = 2)]
+    pub power: i32,
+
+    /// Escape radius for the Mandelbrot set
+    #[arg(short, long, default_value_t = 2.0)]
+    pub escape_radius: f64,
 
     /// Number of frames to generate
     #[arg(short, long, default_value_t = 100)]
