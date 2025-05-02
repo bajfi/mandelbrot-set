@@ -3,6 +3,7 @@ mod utils;
 
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
+use tempfile::TempDir;
 
 fn main() {
     let cli = cli::Cli::parse();
@@ -12,12 +13,29 @@ fn main() {
         std::fs::create_dir_all(&cli.result_folder).expect("Error creating output directory");
     }
 
+    // Determine where to store frames
+    // If no_frames is true, use a temporary directory
+    // Otherwise, use a subdirectory in the result folder
+    let frames_dir = if cli.no_frames {
+        // Create temporary directory that will be automatically deleted when dropped
+        let dir = TempDir::new().expect("Error creating temporary directory");
+        dir.path().to_path_buf()
+    } else {
+        // Use the frames directory in the result folder
+        let dir = cli.result_folder.join("frames");
+        if !dir.exists() {
+            std::fs::create_dir_all(&dir).expect("Error creating frames directory");
+        }
+        dir
+    };
+
     let bounds = utils::parse_pair(&cli.pixels, 'x').expect("Error parsing image dimensions");
     let mut upper_left =
         utils::parse_complex(&cli.upper_left).expect("Error parsing upper left corner point");
     let mut lower_right =
         utils::parse_complex(&cli.lower_right).expect("Error parsing lower right corner point");
     let scale_factor = cli.scale_factor;
+    let scale_pointer = utils::parse_complex(&cli.pointer).expect("Error parsing scale pointer");
     let n_frames = cli.n_frames;
 
     let mut pixels = vec![0; bounds.0 * bounds.1];
@@ -44,8 +62,8 @@ fn main() {
                     let height = band.len() / bounds.0;
                     let band_bounds = (bounds.0, height);
                     let band_upper_left =
-                        utils::pixel_to_point(bounds, (0, top), upper_left, lower_right);
-                    let band_lower_right = utils::pixel_to_point(
+                        utils::transform::pixel_to_point(bounds, (0, top), upper_left, lower_right);
+                    let band_lower_right = utils::transform::pixel_to_point(
                         bounds,
                         (bounds.0, top + height),
                         upper_left,
@@ -60,25 +78,18 @@ fn main() {
             .unwrap();
         }
 
-        // Create frames directory if it doesn't exist
-        let frames_dir = cli.result_folder.join("frames");
-        if !frames_dir.exists() {
-            std::fs::create_dir_all(&frames_dir).expect("Error creating frames directory");
-        }
-
-        // Write the image to a file
-        let frame_name = format!(
-            "{}/frames/frame-{:03}.png",
-            cli.result_folder.display(),
-            i + 1
-        );
-        utils::write_image(&frame_name, &pixels, bounds).expect("Error writing PNG file");
+        // Write the image to a file in the appropriate directory
+        let frame_name = format!("{}/frame-{:03}.png", frames_dir.display(), i + 1);
+        utils::preserve::write_image(&frame_name, &pixels, bounds).expect("Error writing PNG file");
 
         // Add frame path to our collection for GIF creation
         frame_paths.push(frame_name);
 
         // Scale the view
-        (upper_left, lower_right) = utils::scale(upper_left, lower_right, scale_factor);
+        (upper_left, lower_right) = (
+            utils::transform::scale_point(upper_left, scale_pointer, scale_factor),
+            utils::transform::scale_point(lower_right, scale_pointer, scale_factor),
+        );
 
         // Update progress bar
         progress_bar.inc(1);
@@ -102,7 +113,7 @@ fn main() {
     gif_progress.set_message("Creating GIF animation...");
     gif_progress.enable_steady_tick(std::time::Duration::from_millis(100));
 
-    utils::make_gif(frame_paths, &gif_path, cli.delay).expect("Error creating GIF file");
+    utils::preserve::make_gif(frame_paths, &gif_path, cli.delay).expect("Error creating GIF file");
 
     gif_progress.finish_with_message(format!("GIF created at: {}", gif_path));
 }

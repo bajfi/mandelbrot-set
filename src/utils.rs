@@ -1,4 +1,7 @@
+pub mod preserve;
+pub mod transform;
 use num::Complex;
+
 /// Try to determine if `c` is in the Mandelbrot set, using at most `limit`
 /// iterations to decide.
 ///
@@ -60,44 +63,6 @@ fn test_parse_complex() {
     assert_eq!(parse_complex("0.5,1.5x"), None);
 }
 
-/// corresponding point on the complex plane.
-///
-/// `bounds` is a pair giving the width and height of the image in pixels.
-/// `pixel` is a (column, row) pair indicating a particular pixel in that image.
-/// The `upper_left` and `lower_right` parameters are points on the complex
-/// plane designating the area our image covers.
-pub fn pixel_to_point(
-    bounds: (usize, usize),
-    pixel: (usize, usize),
-    upper_left: Complex<f64>,
-    lower_right: Complex<f64>,
-) -> Complex<f64> {
-    let (width, height) = (
-        lower_right.re - upper_left.re,
-        upper_left.im - lower_right.im,
-    );
-    Complex {
-        re: upper_left.re + pixel.0 as f64 * width / bounds.0 as f64,
-        im: upper_left.im - pixel.1 as f64 * height / bounds.1 as f64, // Why subtraction here? pixel.1 increases as we go down,
-                                                                       // but the imaginary component increases as we go up.
-    }
-}
-#[test]
-fn test_pixel_to_point() {
-    assert_eq!(
-        pixel_to_point(
-            (100, 200),
-            (25, 175),
-            Complex { re: -1.0, im: 1.0 },
-            Complex { re: 1.0, im: -1.0 }
-        ),
-        Complex {
-            re: -0.5,
-            im: -0.75
-        }
-    );
-}
-
 /// Render a rectangle of the Mandelbrot set into a buffer of pixels.
 ///
 /// The `bounds` argument gives the width and height of the buffer `pixels`,
@@ -114,168 +79,11 @@ pub fn render(
 
     for row in 0..bounds.1 {
         for column in 0..bounds.0 {
-            let point = pixel_to_point(bounds, (column, row), upper_left, lower_right);
+            let point = transform::pixel_to_point(bounds, (column, row), upper_left, lower_right);
             pixels[row * bounds.0 + column] = match escape_time(point, 255) {
                 None => 0,
                 Some(count) => 255 - count as u8,
             };
         }
     }
-}
-
-use image::{ImageBuffer, Luma};
-/// Write the buffer `pixels`, whose dimensions are given by `bounds`, to the
-/// file named `filename`.
-pub fn write_image(
-    filename: &str,
-    pixels: &[u8],
-    bounds: (usize, usize),
-) -> Result<(), std::io::Error> {
-    // Make sure the folder is created
-    let path = std::path::Path::new(filename);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to create directory: {}", e),
-            )
-        })?;
-    }
-    // Create an image buffer from the pixel data
-    if let Some(img) =
-        ImageBuffer::<Luma<u8>, _>::from_raw(bounds.0 as u32, bounds.1 as u32, pixels.to_vec())
-    {
-        // Save the image, converting any errors to std::io::Error
-        img.save(filename)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    }
-
-    Ok(())
-}
-
-pub fn scale(
-    upper_left: Complex<f64>,
-    lower_right: Complex<f64>,
-    factor: f64,
-) -> (Complex<f64>, Complex<f64>) {
-    let center = (upper_left + lower_right) / 2.0;
-    let width = (lower_right.re - upper_left.re) * factor;
-    let height = (upper_left.im - lower_right.im) * factor;
-    (
-        Complex {
-            re: center.re - width / 2.0,
-            im: center.im + height / 2.0,
-        },
-        Complex {
-            re: center.re + width / 2.0,
-            im: center.im - height / 2.0,
-        },
-    )
-}
-#[test]
-fn test_scale() {
-    assert_eq!(
-        scale(
-            Complex { re: -1.0, im: 1.0 },
-            Complex { re: 1.0, im: -1.0 },
-            2.0
-        ),
-        (Complex { re: -2.0, im: 2.0 }, Complex { re: 2.0, im: -2.0 })
-    );
-}
-
-use gif::{Encoder, Frame, Repeat};
-/// Create a GIF from a series of PNG images.
-///
-/// # Arguments
-/// * `frames` - A vector of file paths to the PNG images to include in the GIF
-/// * `output` - The file path for the output GIF
-/// * `delay` - The delay between frames in hundredths of a second (e.g., 10 = 0.1 seconds)
-///
-/// # Returns
-/// * `Ok(())` if the GIF was created successfully
-/// * `Err(std::io::Error)` if there was an error creating or writing the GIF
-///
-/// # Example
-/// ```
-/// let frames = vec!["frame1.png".to_string(), "frame2.png".to_string()];
-/// make_gif(frames, "animation.gif", 10)?;
-/// ```
-pub fn make_gif(frames: Vec<String>, output: &str, delay: u16) -> Result<(), std::io::Error> {
-    // Check if we have any frames
-    if frames.is_empty() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "No frames provided for GIF creation",
-        ));
-    }
-
-    // Create output file and encoder
-    let file = std::fs::File::create(output)?;
-
-    // Open the first image to get dimensions
-    let first_img = image::open(&frames[0])
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    let (width, height) = (first_img.width(), first_img.height());
-
-    // Create a grayscale palette with 256 shades
-    let mut palette = Vec::with_capacity(768); // 256 colors * 3 channels
-    for i in 0..256 {
-        palette.push(i as u8); // R
-        palette.push(i as u8); // G
-        palette.push(i as u8); // B
-    }
-
-    // Create the GIF encoder with our grayscale palette
-    let mut encoder = Encoder::new(file, width as u16, height as u16, &palette)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-
-    // Configure the GIF settings
-    encoder
-        .set_repeat(Repeat::Infinite)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-
-    // Process each frame
-    for (i, frame_path) in frames.iter().enumerate() {
-        // Load the image
-        let img = image::open(frame_path).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to open frame {}: {}", frame_path, e),
-            )
-        })?;
-
-        // Convert to luma8 (grayscale)
-        let img = img.to_luma8();
-
-        // Check dimensions match the first frame
-        if i > 0 && (img.width() != width || img.height() != height) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "Frame dimensions mismatch: {} has different size than the first frame",
-                    frame_path
-                ),
-            ));
-        }
-
-        // Get the raw pixel data - this contains grayscale values
-        let buffer = img.into_raw();
-
-        // Create a GIF frame
-        let mut frame = Frame::default();
-        frame.width = width as u16;
-        frame.height = height as u16;
-        frame.delay = delay;
-
-        // The buffer already contains the palette indices (grayscale values 0-255)
-        frame.buffer = std::borrow::Cow::Owned(buffer);
-
-        // Write the frame to the GIF
-        encoder
-            .write_frame(&frame)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    }
-
-    Ok(())
 }

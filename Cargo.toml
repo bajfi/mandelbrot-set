@@ -10,3 +10,4 @@ image = "0.25.6"
 num = "0.4.3"
 clap = { version = "4.4", features = ["derive"] }
 indicatif = "0.17.11"
+tempfile = "3.19.1"
