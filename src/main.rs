@@ -4,6 +4,7 @@ mod utils;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use tempfile::TempDir;
+use utils::FractalType;
 
 fn main() {
     let cli = cli::Cli::parse();
@@ -29,6 +30,7 @@ fn main() {
         dir
     };
 
+    // Parse the arguments from the command line interface
     let bounds = utils::parse_pair(&cli.pixels, 'x').expect("Error parsing image dimensions");
     let mut upper_left =
         utils::parse_complex(&cli.upper_left).expect("Error parsing upper left corner point");
@@ -40,11 +42,33 @@ fn main() {
     let scale_pointer = utils::parse_complex(&cli.pointer).expect("Error parsing scale pointer");
     let n_frames = cli.n_frames;
 
+    // Get the fractal type from CLI
+    let fractal_type: FractalType = cli.fractal_type.into();
+
+    // Parse Julia set constant if needed
+    let julia_constant = match fractal_type {
+        FractalType::Julia => {
+            Some(utils::parse_complex(&cli.julia_constant).expect("Error parsing Julia constant"))
+        }
+        _ => None,
+    };
+
     // The size of the pixel buffer is width * height
     let mut pixels = vec![0; bounds.0 * bounds.1];
 
     // Collect frame paths for later GIF creation
     let mut frame_paths: Vec<String> = Vec::with_capacity(n_frames);
+
+    // Get fractal name for file naming
+    let fractal_name = match fractal_type {
+        FractalType::Mandelbrot => "mandelbrot",
+        FractalType::Julia => "julia",
+        FractalType::BurningShip => "burning_ship",
+        FractalType::Tricorn => "tricorn",
+        FractalType::Nova => "nova",
+        FractalType::Sin => "sin",
+        FractalType::Cos => "cos",
+    };
 
     // Setup progress bar for frame generation
     let progress_bar = ProgressBar::new(n_frames as u64);
@@ -73,6 +97,9 @@ fn main() {
                         lower_right,
                     );
 
+                    // Clone the julia_constant for the current band
+                    let band_julia_constant = julia_constant.clone();
+
                     spawner.spawn(move |_| {
                         utils::render(
                             band,
@@ -81,6 +108,8 @@ fn main() {
                             band_lower_right,
                             power,
                             escape_radius,
+                            fractal_type,
+                            band_julia_constant,
                         );
                     });
                 }
@@ -89,7 +118,7 @@ fn main() {
         }
 
         // Write the image to a file in the appropriate directory
-        let frame_name = format!("{}/frame-{:03}.png", frames_dir.display(), i + 1);
+        let frame_name = format!("{}/{}-{:03}.png", frames_dir.display(), fractal_name, i + 1);
         utils::preserve::write_image(&frame_name, &pixels, bounds).expect("Error writing PNG file");
 
         // Add frame path to our collection for GIF creation
@@ -111,7 +140,7 @@ fn main() {
 
     // After generating all frames, create a GIF animation
     println!("Creating GIF from {} frames...", frame_paths.len());
-    let gif_path = format!("{}/mandelbrot_zoom.gif", cli.output_folder.display());
+    let gif_path = format!("{}/{}.gif", cli.output_folder.display(), fractal_name);
 
     // Add progress bar for GIF creation
     let gif_progress = ProgressBar::new_spinner();
