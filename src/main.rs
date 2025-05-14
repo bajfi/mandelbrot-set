@@ -3,6 +3,7 @@ mod utils;
 
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use tempfile::TempDir;
 use utils::FractalType;
 
@@ -78,43 +79,37 @@ fn main() {
             .unwrap(),
     );
 
-    let threads = cli.threads;
-    let rows_per_band = bounds.1 / threads + 1;
     for i in 0..n_frames {
         {
-            let bands: Vec<&mut [u8]> = pixels.chunks_mut(rows_per_band * bounds.0).collect();
-            crossbeam::scope(|spawner| {
-                for (band_idx, band) in bands.into_iter().enumerate() {
-                    let top = rows_per_band * band_idx;
-                    let height = band.len() / bounds.0;
-                    let band_bounds = (bounds.0, height);
-                    let band_upper_left =
-                        utils::transform::pixel_to_point(bounds, (0, top), upper_left, lower_right);
-                    let band_lower_right = utils::transform::pixel_to_point(
+            // Process each row in parallel using rayon
+            pixels
+                .par_chunks_mut(bounds.0)
+                .enumerate()
+                .for_each(|(row, row_pixels)| {
+                    let row_bounds = (bounds.0, 1);
+                    let row_upper_left =
+                        utils::transform::pixel_to_point(bounds, (0, row), upper_left, lower_right);
+                    let row_lower_right = utils::transform::pixel_to_point(
                         bounds,
-                        (bounds.0, top + height),
+                        (bounds.0, row + 1),
                         upper_left,
                         lower_right,
                     );
 
-                    // Clone the julia_constant for the current band
-                    let band_julia_constant = julia_constant.clone();
+                    // Clone the julia_constant for the current row
+                    let row_julia_constant = julia_constant.clone();
 
-                    spawner.spawn(move |_| {
-                        utils::render(
-                            band,
-                            band_bounds,
-                            band_upper_left,
-                            band_lower_right,
-                            power,
-                            escape_radius,
-                            fractal_type,
-                            band_julia_constant,
-                        );
-                    });
-                }
-            })
-            .unwrap();
+                    utils::render(
+                        row_pixels,
+                        row_bounds,
+                        row_upper_left,
+                        row_lower_right,
+                        power,
+                        escape_radius,
+                        fractal_type,
+                        row_julia_constant,
+                    );
+                });
         }
 
         // Write the image to a file in the appropriate directory
